@@ -9,8 +9,12 @@ from controllers import PID
 
 
 class AUV:
+    """
+    При старте записываем положение курса, что бы знать где берег
+    """
     state = ''
-    states = ['search_task', 'go_to_task', 'execute_task']
+    states = ['search_gate', 'go_in_gate', 'go_out_gate', 'left_turn', 'right_turn', 'search_ball',
+              'touch_ball', 'go_back', 'search_dock', 'go_dock', 'stop']
 
     def update_image(self):
         image = self.auv.get_image_front()
@@ -37,7 +41,7 @@ class AUV:
 
         self.machine = Machine(model=self, states=AUV.states, initial='search_task')
         self.machine.add_transition(
-            trigger='find', source='search_task', dest='go_to_task'
+            trigger='find_gate', source='search_gate', dest='go_in_gate'
         )
         self.machine.add_transition(
             trigger='arrived', source='go_to_task', dest='execute_task'
@@ -68,30 +72,68 @@ class AUV:
         self.auv.set_motor_power(0, self.left)
         self.auv.set_motor_power(1, self.right)
 
-    def search_task(self):
+    def search_gate(self):
+        """
+        Ищем пару желтых буев примерно одинакового размера, нам нужен курс до центра между ними
+        """
         self.yaw_controller.update(100)
-        self.update_contours(self.red_mask)
+        self.update_contours(self.yellow_mask)
         c = self.get_max_cnt()
         if c is not None:
             self.find()
 
-    def go_to_task(self):
-        # hold yaw
-        self.update_contours(self.red_mask)
-        cnt = self.get_max_cnt()
-        if cnt is None:
-            # контур был потерян, нужна логика по обработке
-            return
-        moments = cv.moments(cnt)
-        try:
-            x = moments['m10']/moments['m00']
-        except ZeroDivisionError:
-            return
+    def go_in_gate(self):
+        """
+        плывем до буя в воротах, как ворота проподут из поле зрения и буй будет достаточно
+        близок, переходим к маневру поворота по часовой стрелки или против
+        или
+        если мы плывем в обратном направлении то плывем до тех пор пока врата не проподут
+        из виду
+        """
+        # ищем желтые контуры их дожно быть два примерно одинаковых размеров
+        self.update_contours(self.yellow_mask)
+        if self.contours is None:
+            # контуры были потеряны
+            pass
+
+        for contour in self.contours:
+            moments = cv.moments(contour)
+            try:
+                x = moments['m10']/moments['m00']
+            except ZeroDivisionError:
+                continue
         yaw_error = self.resolution[1] / 2 - x
         self.yaw_controller.update(yaw_error)
         # hold position
         marker_size = cnt.size
         self.speed_controller.update(marker_size - 300)
+
+    def left_turn(self):
+        pass
+
+    def right_turn(self):
+        pass
+
+    def go_to_balls(self):
+        pass
+
+    def touch_ball(self):
+        pass
+
+    def search_ball(self):
+        pass
+
+    def go_back(self):
+        pass
+
+    def search_dock(self):
+        pass
+
+    def go_dock(self):
+        pass
+
+    def stop(self):
+        pass
 
     def execute_task(self):
         print(self.state)
