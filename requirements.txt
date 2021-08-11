@@ -1,0 +1,8 @@
+numpy==1.21.1
+opencv-contrib-python==4.5.3.56
+opencv-python==4.5.3.56
+pymurapi==0.0.1
+pyzmq==22.2.1
+six==1.16.0
+transitions==0.8.8
+
