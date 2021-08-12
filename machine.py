@@ -6,6 +6,7 @@ import pymurapi as mur
 import cv2 as cv
 import utils
 import settings
+import picamera
 from controllers import PID
 
 
@@ -19,7 +20,15 @@ class AUV:
               'search_ball_yellow', 'go_to_ball']
 
     def update_image(self):
-        image = self.auv.get_image_front()
+        if settings.SIMULATOR:
+            image = self.auv.get_image_front()
+        else:
+            with picamera.PiCamera() as camera:
+                camera.resolution = (320, 240)
+                camera.framerate = 24
+                image = np.empty((240, 320, 3), dtype=np.uint8)
+                camera.capture(image, 'rgb')
+
         self.rgb_image = image
         self.hsv_image = cv.cvtColor(image, cv.COLOR_BGR2HSV)
         return image
@@ -52,49 +61,6 @@ class AUV:
         )
         self.machine.add_transition(
             trigger='arrived', source='go_from_gate', dest='left_turn', before='save_yaw'
-        )
-        # example
-        self.machine.add_transition(
-            trigger='arrived', source='go_from_gate', dest='right_turn'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='right_turn', dest='search_gate'
-        )
-        self.machine.add_transition(
-            trigger='find', source='search_gate', dest='go_from_gate'
-        )
-        self.machine.add_transition(
-            trigger='lost', source='go_to_task', dest='search_task'
-        )
-        self.machine.add_transition(
-            trigger='arrived', source='go_from_gate', dest='left_turn'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='left_turn', dest='search_ball_red'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='search_ball_red', dest='go_to_ball'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='go_to_ball', dest='search_ball_yellow'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='search_ball_yellow', dest='go_to_ball'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='go_to_ball', dest='search_ball_green'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='search_ball_green', dest='go_to_ball'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='go_to_ball', dest='search_dock'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='search_dock', dest='go_to_dock'
-        )
-        self.machine.add_transition(
-            trigger='done_turn', source='go_to_dock', dest='stop'
         )
 
         self.yellow_markers = {}
