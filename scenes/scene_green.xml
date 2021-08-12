@@ -127,7 +127,7 @@
 			<attribute name="Variables" />
 			<component type="StaticModel" id="16777240">
 				<attribute name="Model" value="Model;Models/Sphere.mdl" />
-				<attribute name="Material" value="Material;Materials/Colors/Blue.xml" />
+				<attribute name="Material" value="Material;Materials/Colors/Green.xml" />
 			</component>
 			<component type="RigidBody" id="16777241">
 				<attribute name="Physics Rotation" value="0.707107 0 0.707107 0" />
