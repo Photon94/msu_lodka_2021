@@ -44,8 +44,8 @@ class AUV:
         self.green_mask = utils.get_mask(settings.GREEN_RANGE)
         self.yellow_mask = utils.get_mask(settings.YELLOW_RANGE)
 
-        self.yaw_controller = PID(p=0.1)
-        self.speed_controller = PID(p=0.1)
+        self.yaw_controller = PID(p=0.3, i=0.1, s=50)
+        self.speed_controller = PID(p=0.5, s=50)
 
         self.speed_error = 0
         # camera resolution
@@ -54,7 +54,7 @@ class AUV:
         self.right = 0
         self.contours = []
 
-        self.machine = Machine(model=self, states=AUV.states, initial='search_gate')
+        self.machine = Machine(model=self, states=AUV.states, initial='search_dock')
         # после перехода очищаем словарь с маркерами
         self.machine.add_transition(
             trigger='find', source='search_gate', dest='go_from_gate', after='clear_yellow_context'
@@ -89,8 +89,8 @@ class AUV:
         возвращает курс в градусах
         """
         yaw = self.auv.get_yaw()
-        if yaw < 0:
-            yaw = 180 - yaw
+        # if yaw < 0:
+        #     yaw = 360 + yaw
         return yaw
 
     def calculate(self):
@@ -100,13 +100,24 @@ class AUV:
         self.left = self.yaw_controller.output + self.speed_controller.output
         self.right = -self.yaw_controller.output + self.speed_controller.output
 
-        self.auv.set_motor_power(0, self.left)
-        self.auv.set_motor_power(1, self.right)
+        if self.left > 100:
+            self.left = 100
+        elif self.left < -100:
+            self.left = -100
+
+        if self.right > 100:
+            self.right = 100
+        elif self.right < -100:
+            self.right = -100
+
+        print('speed: {:.2f}, {:.2f}, {:.2f}'.format(self.left, self.right, self.origin))
+        self.auv.set_motor_power(1, self.left)
+        self.auv.set_motor_power(2, self.right)
 
     def clear_yellow_context(self):
         self.yellow_markers = {}
 
-    def search_same_contours(self) -> [[np.ndarray]]:
+    def search_same_contours(self):
         if len(self.contours) < 2:
             return []
 
@@ -192,6 +203,11 @@ class AUV:
         pass
 
     def search_dock(self):
+        p = self.origin
+        print('error: {:.2f}, {:.2f}'.format(self.get_yaw() - p, self.get_yaw()))
+        self.yaw_controller.update((self.get_yaw() - p))
+        speed = 70
+        self.speed_controller.update(0 - speed)
         pass
 
     def go_dock(self):
