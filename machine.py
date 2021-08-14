@@ -20,7 +20,7 @@ class AUV:
     state = ''
     states = ['search_gate', 'go_from_gate', 'left_turn', 'right_turn', 'search_ball_green',
               'touch_ball', 'go_back', 'search_dock', 'go_to_dock', 'stop', 'search_ball_red',
-              'search_ball_yellow', 'go_to_ball']
+              'search_ball_yellow', 'go_to_ball', 'turn_back', 'forward']
 
     def update_image(self):
         if settings.SIMULATOR:
@@ -50,7 +50,7 @@ class AUV:
             self.yaw_controller = PID(p=0.3, s=20)
             self.speed_controller = PID(p=1, s=20)
         else:
-            self.yaw_controller = PID(p=0.3, i=0.1, s=50)
+            self.yaw_controller = PID(p=0.3, s=40)
             self.speed_controller = PID(p=0.5, s=50)
 
         self.speed_error = 0
@@ -64,17 +64,23 @@ class AUV:
         self.sub_task = False
         self.task_start_position = None
 
-        self.machine = Machine(model=self, states=AUV.states, initial='search_gate')
+        self.machine = Machine(model=self, states=AUV.states, initial='go_from_gate')
         # после перехода очищаем словарь с маркерами
         self.machine.add_transition(
             trigger='find', source='search_gate', dest='go_from_gate', after='clear_yellow_context'
         )
         self.machine.add_transition(
-            trigger='arrived', source='go_from_gate', dest='left_turn', before='save_yaw'
+            trigger='arrived', source='go_from_gate', dest='turn_back', before='save_yaw'
         )
         self.machine.add_transition(
-            trigger='arrived', source='left_turn', dest='go_from_gate'
+            trigger='next', source='turn_back', dest='forward', before='save_yaw'
         )
+        self.machine.add_transition(
+            trigger='next', source='forward', dest='stop', before='save_yaw'
+        )
+        # self.machine.add_transition(
+        #     trigger='arrived', source='left_turn', dest='go_from_gate'
+        # )
 
         self.yellow_markers = {}
         self.turn_start = 0
@@ -160,9 +166,10 @@ class AUV:
         self.update_contours(self.yellow_mask)
 
         sames = self.search_same_contours()
-
+        print('countours: {}, {}'.format(len(self.contours), len(sames)))
         for contours in sames:
             if len(contours) == 2:
+                print('next')
                 # нашли контуры двух дуев одинакового размера
                 self.left = 0
                 self.right = 0
@@ -186,7 +193,9 @@ class AUV:
         """
         будем плыть до тех пор пока синий или зеленый маркер не станут достаточно крупными
         """
-        self.update_contours(self.green_mask)
+        self.update_contours(self.blue_mask)
+
+        print('len: {}'.format(len(self.contours)))
         if self.contours is None:
             # контуры были потеряны
             pass
@@ -202,6 +211,7 @@ class AUV:
             return
 
         yaw_error = self.resolution[1] / 2 - x
+        print('yaw error: {}'.format(yaw_error))
         self.yaw_controller.update(yaw_error)
         # hold position
         TARGET_SIZE = 300
@@ -245,10 +255,43 @@ class AUV:
 
         print('error: {:.2f}'.format(abs(self.turn_start - self.get_yaw())))
         if task_time > 10 and abs(self.turn_start - self.get_yaw()) < 5:
+            self.start = None
             self.arrived()
 
         self.speed_controller.update(0)
         self.yaw_controller.update(0)
+
+    def turn_back(self):
+
+        if self.start is None:
+            self.start = time.time()
+        task_time = time.time() - self.start
+        yaw_error = self.get_yaw() + self.turn_start
+        if abs(yaw_error) < 5 and task_time > 30:
+            self.start = None
+            self.next()
+        self.yaw_controller.update(yaw_error)
+
+    def forward(self):
+        print('forward')
+        if self.start is None:
+            self.start = time.time()
+
+        task_time = time.time() - self.start
+
+        if task_time > 30:
+            self.next()
+
+        p = self.get_yaw()
+        error = self.clamp_to_360(p - self.origin)
+        if abs(error) > 180:
+            error *= -1
+        error = self.to_180(error)
+        print('error: {:.2f}, position: {:.2f}, origin:{:.2f}'.format(error, self.to_360(self.get_yaw()),
+                                                                      self.to_360(self.origin)))
+        self.yaw_controller.update(-1 * error)
+
+        self.speed_controller.update(0 - 70)
 
     def right_turn(self):
         if self.start is None:
