@@ -6,7 +6,8 @@ import pymurapi as mur
 import cv2 as cv
 import utils
 import settings
-import picamera
+if not settings.SIMULATOR:
+    import picamera
 from controllers import PID
 
 
@@ -43,9 +44,12 @@ class AUV:
         self.blue_mask = utils.get_mask(settings.BLUE_RANGE)
         self.green_mask = utils.get_mask(settings.GREEN_RANGE)
         self.yellow_mask = utils.get_mask(settings.YELLOW_RANGE)
-
-        self.yaw_controller = PID(p=0.3, i=0.1, s=50)
-        self.speed_controller = PID(p=0.5, s=50)
+        if settings.SIMULATOR:
+            self.yaw_controller = PID(p=0.3, s=20)
+            self.speed_controller = PID(p=0.1, s=20)
+        else:
+            self.yaw_controller = PID(p=0.3, i=0.1, s=50)
+            self.speed_controller = PID(p=0.5, s=50)
 
         self.speed_error = 0
         # camera resolution
@@ -153,6 +157,20 @@ class AUV:
                 self.right = 0
                 self.find()
 
+    @staticmethod
+    def clamp_to_360(angle):
+        if angle < 0.0:
+            return angle + 360.0
+        if angle > 360.0:
+            return angle - 360.0
+        return angle
+
+    @staticmethod
+    def to_180(angle):
+        if angle > 180.0:
+            return angle - 360.0
+        return angle
+
     def go_from_gate(self):
         """
         будем плыть до тех пор пока синий или зеленый маркер не станут достаточно крупными
@@ -202,13 +220,23 @@ class AUV:
     def go_back(self):
         pass
 
+    @staticmethod
+    def to_360(angle):
+        if angle > 0.0:
+            return angle
+        if angle <= 0.0:
+            return 360.0 + angle
+
     def search_dock(self):
-        p = self.origin
-        print('error: {:.2f}, {:.2f}'.format(self.get_yaw() - p, self.get_yaw()))
-        self.yaw_controller.update((self.get_yaw() - p))
+        p = self.get_yaw()
+        error = self.clamp_to_360(p - self.origin)
+        if abs(error) > 180:
+            error *= -1
+        error = self.to_180(error)
+        print('error: {:.2f}, position: {:.2f}, origin:{:.2f}'.format(error, self.to_360(self.get_yaw()), self.to_360(self.origin)))
+        self.yaw_controller.update(-1 * error)
         speed = 70
-        self.speed_controller.update(0 - speed)
-        pass
+        # self.speed_controller.update(0 - speed)
 
     def go_dock(self):
         pass
