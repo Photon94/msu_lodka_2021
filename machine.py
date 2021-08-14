@@ -6,9 +6,11 @@ import pymurapi as mur
 import cv2 as cv
 import utils
 import settings
+
 if not settings.SIMULATOR:
     import picamera
 from controllers import PID
+import time
 
 
 class AUV:
@@ -46,7 +48,7 @@ class AUV:
         self.yellow_mask = utils.get_mask(settings.YELLOW_RANGE)
         if settings.SIMULATOR:
             self.yaw_controller = PID(p=0.3, s=20)
-            self.speed_controller = PID(p=0.1, s=20)
+            self.speed_controller = PID(p=1, s=20)
         else:
             self.yaw_controller = PID(p=0.3, i=0.1, s=50)
             self.speed_controller = PID(p=0.5, s=50)
@@ -58,13 +60,20 @@ class AUV:
         self.right = 0
         self.contours = []
 
-        self.machine = Machine(model=self, states=AUV.states, initial='search_dock')
+        self.start = None
+        self.sub_task = False
+        self.task_start_position = None
+
+        self.machine = Machine(model=self, states=AUV.states, initial='search_gate')
         # после перехода очищаем словарь с маркерами
         self.machine.add_transition(
             trigger='find', source='search_gate', dest='go_from_gate', after='clear_yellow_context'
         )
         self.machine.add_transition(
             trigger='arrived', source='go_from_gate', dest='left_turn', before='save_yaw'
+        )
+        self.machine.add_transition(
+            trigger='arrived', source='left_turn', dest='go_from_gate'
         )
 
         self.yellow_markers = {}
@@ -113,10 +122,12 @@ class AUV:
             self.right = 100
         elif self.right < -100:
             self.right = -100
-
-        print('speed: {:.2f}, {:.2f}, {:.2f}'.format(self.left, self.right, self.origin))
-        self.auv.set_motor_power(1, self.left)
-        self.auv.set_motor_power(2, self.right)
+        if settings.SIMULATOR:
+            self.auv.set_motor_power(0, self.left)
+            self.auv.set_motor_power(1, self.right)
+        else:
+            self.auv.set_motor_power(1, self.left)
+            self.auv.set_motor_power(2, self.right)
 
     def clear_yellow_context(self):
         self.yellow_markers = {}
@@ -183,7 +194,7 @@ class AUV:
         for contour in self.contours:
             moments = cv.moments(contour)
             try:
-                x = moments['m10']/moments['m00']
+                x = moments['m10'] / moments['m00']
                 break
             except ZeroDivisionError:
                 continue
@@ -205,11 +216,55 @@ class AUV:
         self.turn_start = self.get_yaw()
 
     def left_turn(self):
-        yaw_error = self.get_yaw() + (self.turn_start - 90)
-        self.yaw_controller.update(yaw_error)
+        if self.start is None:
+            self.start = time.time()
+        task_time = time.time() - self.start
+
+        # поворачиваем на 90 градусов
+        if not self.sub_task:
+            print('turn')
+            yaw_error = self.get_yaw() + (self.turn_start - 90)
+            self.yaw_controller.update(yaw_error)
+
+        # если повернули то движемся по кругу
+        if abs(yaw_error) < 5 and task_time > 5:
+            print('done task')
+            self.sub_task = True
+            self.start = None
+        print('yaw error: {:.2f}, time:{:.2f}'.format(abs(yaw_error), task_time))
+
+        # условие для движения после поворота на 90 градусов
+        if self.sub_task and self.start is None:
+            self.start = time.time()
+
+        if self.sub_task:
+            task_time = time.time() - self.start
+
+            self.right = 40
+            self.left = -40
+
+        print('error: {:.2f}'.format(abs(self.turn_start - self.get_yaw())))
+        if task_time > 10 and abs(self.turn_start - self.get_yaw()) < 5:
+            self.arrived()
+
+        self.speed_controller.update(0)
+        self.yaw_controller.update(0)
 
     def right_turn(self):
-        pass
+        if self.start is None:
+            self.start = time.time()
+
+        task_time = time.time() - self.start
+
+        self.right = 40
+        self.left = -40
+
+        print('error: {:2.f}'.format(abs(self.turn_start - self.get_yaw())))
+        if task_time > 10 and abs(self.turn_start - self.get_yaw()) < 5:
+            self.arrived()
+
+        self.speed_controller.update(0)
+        self.yaw_controller.update(0)
 
     def search_ball(self):
         pass
@@ -233,10 +288,12 @@ class AUV:
         if abs(error) > 180:
             error *= -1
         error = self.to_180(error)
-        print('error: {:.2f}, position: {:.2f}, origin:{:.2f}'.format(error, self.to_360(self.get_yaw()), self.to_360(self.origin)))
+        print('error: {:.2f}, position: {:.2f}, origin:{:.2f}'.format(error, self.to_360(self.get_yaw()),
+                                                                      self.to_360(self.origin)))
         self.yaw_controller.update(-1 * error)
         speed = 70
         # self.speed_controller.update(0 - speed)
+        print('speed l:{:.2f}, r:{:.2f}'.format(self.left, self.right))
 
     def go_dock(self):
         pass

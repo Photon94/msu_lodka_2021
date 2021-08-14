@@ -6,7 +6,7 @@ GREEN_RANGE = Range(low=(45, 50, 50), high=(125, 255, 255))
 
 BLUE_RANGE = Range(low=(105, 50, 50), high=(135, 255, 255))
 
-SIMULATOR = False
+SIMULATOR = True
 
 # пороговое значение для определения контуров
 CONTOURS_SENSITIVE = 30
