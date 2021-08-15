@@ -3,6 +3,9 @@ import utils
 import settings
 import typing
 
+from sys import argv
+
+
 def update_contours(mask: typing.Callable):
     contours, _ = cv2.findContours(mask(hsv_image), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     new_contours = []
@@ -12,7 +15,7 @@ def update_contours(mask: typing.Callable):
         new_contours.append(contour)
     return new_contours
 
-img = cv2.imread("calibration/calibration_green.jpg")
+img = cv2.imread(argv)
 hsv_image = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
 height, width = img.shape[:2]
